@@ -3,8 +3,8 @@
 Deterministic eval gates and reliability primitives for LLM pipelines.
 
 [![CI](https://github.com/LesterALeong/llm-evalkit/actions/workflows/ci.yml/badge.svg)](https://github.com/LesterALeong/llm-evalkit/actions/workflows/ci.yml)
-[![PyPI](https://img.shields.io/pypi/v/llm-evalkit)](https://pypi.org/project/llm-evalkit/)
-[![Python](https://img.shields.io/pypi/pyversions/llm-evalkit)](https://pypi.org/project/llm-evalkit/)
+[![PyPI](https://img.shields.io/pypi/v/llm-evalgate)](https://pypi.org/project/llm-evalgate/)
+[![Python](https://img.shields.io/pypi/pyversions/llm-evalgate)](https://pypi.org/project/llm-evalgate/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
 ---
@@ -19,7 +19,7 @@ It gives you two things:
 ## Install
 
 ```bash
-pip install llm-evalkit
+pip install llm-evalgate
 ```
 
 ## Quickstart

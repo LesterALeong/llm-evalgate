@@ -3,7 +3,7 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [project]
-name = "llm-evalkit"
+name = "llm-evalgate"
 version = "0.1.0"
 description = "Deterministic eval gates and reliability primitives for LLM pipelines"
 readme = "README.md"

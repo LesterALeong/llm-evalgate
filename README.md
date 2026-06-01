@@ -1,4 +1,4 @@
-# llm-evalkit
+# llm-evalgate
 
 Deterministic eval gates and reliability primitives for LLM pipelines.
 

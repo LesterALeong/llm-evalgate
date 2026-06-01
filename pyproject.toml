@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "llm-evalgate"
-version = "0.1.0"
+version = "0.1.1"
 description = "Deterministic eval gates and reliability primitives for LLM pipelines"
 readme = "README.md"
 license = { text = "MIT" }
@@ -41,7 +41,7 @@ Repository = "https://github.com/LesterALeong/llm-evalgate"
 Issues = "https://github.com/LesterALeong/llm-evalgate/issues"
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/llm_evalkit"]
+packages = ["src/llm_evalgate"]
 
 [tool.ruff]
 line-length = 100
@@ -52,7 +52,7 @@ select = ["E", "F", "I", "UP"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-addopts = "--cov=llm_evalkit --cov-report=term-missing"
+addopts = "--cov=llm_evalgate --cov-report=term-missing"
 
 [tool.coverage.run]
 source = ["src"]

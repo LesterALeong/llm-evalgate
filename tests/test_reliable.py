@@ -1,6 +1,6 @@
 import pytest
 
-from llm_evalkit.reliable import (
+from llm_evalgate.reliable import (
     CircuitBreaker,
     CircuitOpenError,
     CircuitState,

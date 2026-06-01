@@ -1,4 +1,4 @@
-from llm_evalkit.eval.dimensions import (
+from llm_evalgate.eval.dimensions import (
     BlocklistDimension,
     FactualGroundingDimension,
     ReadabilityDimension,

@@ -1,6 +1,6 @@
 import pytest
 
-from llm_evalkit import Dimension, EvalHarness
+from llm_evalgate import Dimension, EvalHarness
 
 
 class AlwaysPassDimension(Dimension):

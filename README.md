@@ -9,7 +9,7 @@ Deterministic eval gates and reliability primitives for LLM pipelines.
 
 ---
 
-Most LLM eval tooling is either LLM-as-judge (non-deterministic, expensive, not CI-friendly) or a heavy enterprise suite. `llm-evalkit` is neither.
+Most LLM eval tooling is either LLM-as-judge (non-deterministic, expensive, not CI-friendly) or a heavy enterprise suite. `llm-evalgate` is neither.
 
 It gives you two things:
 
@@ -27,8 +27,8 @@ pip install llm-evalgate
 ### Eval gates
 
 ```python
-from llm_evalkit import EvalHarness
-from llm_evalkit.eval.dimensions import BlocklistDimension, ReadabilityDimension, SchemaComplianceDimension
+from llm_evalgate import EvalHarness
+from llm_evalgate.eval.dimensions import BlocklistDimension, ReadabilityDimension, SchemaComplianceDimension
 
 harness = EvalHarness([
     BlocklistDimension(terms=["confidential", "internal use only"]),
@@ -49,7 +49,7 @@ if not report.passed:
 ### Custom dimension
 
 ```python
-from llm_evalkit import Dimension
+from llm_evalgate import Dimension
 
 class JsonDimension(Dimension):
     def evaluate(self, text: str) -> tuple[float, str]:
@@ -68,7 +68,7 @@ assert report.passed
 ### Retry
 
 ```python
-from llm_evalkit.reliable import retry
+from llm_evalgate.reliable import retry
 
 @retry(max_attempts=3, backoff=2.0)
 def call_llm(prompt: str) -> str:
@@ -78,7 +78,7 @@ def call_llm(prompt: str) -> str:
 ### Fallback chain
 
 ```python
-from llm_evalkit.reliable import with_fallback, with_fallback_chain
+from llm_evalgate.reliable import with_fallback, with_fallback_chain
 
 # two-model fallback
 result = with_fallback(
@@ -97,7 +97,7 @@ result = with_fallback_chain([
 ### Circuit breaker
 
 ```python
-from llm_evalkit.reliable import CircuitBreaker, CircuitOpenError
+from llm_evalgate.reliable import CircuitBreaker, CircuitOpenError
 
 breaker = CircuitBreaker(failure_threshold=5, recovery_timeout=60)
 
@@ -127,14 +127,14 @@ LLM-as-judge eval is useful for research. In production pipelines, you need:
 - CI to catch regressions without burning tokens on every commit
 - An audit trail that doesn't depend on a model that may drift
 
-`llm-evalkit` eval dimensions are pure functions. No model calls, no network, no randomness.
+`llm-evalgate` eval dimensions are pure functions. No model calls, no network, no randomness.
 
 ## Composing with a pipeline
 
 ```python
-from llm_evalkit import EvalHarness
-from llm_evalkit.eval.dimensions import BlocklistDimension, ReadabilityDimension
-from llm_evalkit.reliable import retry, with_fallback
+from llm_evalgate import EvalHarness
+from llm_evalgate.eval.dimensions import BlocklistDimension, ReadabilityDimension
+from llm_evalgate.reliable import retry, with_fallback
 
 harness = EvalHarness([
     BlocklistDimension(terms=["[REDACTED]", "TODO"]),

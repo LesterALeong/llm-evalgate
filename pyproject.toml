@@ -36,9 +36,9 @@ dev = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/LesterALeong/llm-evalkit"
-Repository = "https://github.com/LesterALeong/llm-evalkit"
-Issues = "https://github.com/LesterALeong/llm-evalkit/issues"
+Homepage = "https://github.com/LesterALeong/llm-evalgate"
+Repository = "https://github.com/LesterALeong/llm-evalgate"
+Issues = "https://github.com/LesterALeong/llm-evalgate/issues"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/llm_evalkit"]

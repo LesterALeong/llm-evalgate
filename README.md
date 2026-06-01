@@ -2,7 +2,7 @@
 
 Deterministic eval gates and reliability primitives for LLM pipelines.
 
-[![CI](https://github.com/LesterALeong/llm-evalkit/actions/workflows/ci.yml/badge.svg)](https://github.com/LesterALeong/llm-evalkit/actions/workflows/ci.yml)
+[![CI](https://github.com/LesterALeong/llm-evalgate/actions/workflows/ci.yml/badge.svg)](https://github.com/LesterALeong/llm-evalgate/actions/workflows/ci.yml)
 [![PyPI](https://img.shields.io/pypi/v/llm-evalgate)](https://pypi.org/project/llm-evalgate/)
 [![Python](https://img.shields.io/pypi/pyversions/llm-evalgate)](https://pypi.org/project/llm-evalgate/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)

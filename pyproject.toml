@@ -4,15 +4,26 @@ build-backend = "hatchling.build"
 
 [project]
 name = "llm-evalgate"
-version = "0.1.1"
-description = "Deterministic eval gates and reliability primitives for LLM pipelines"
+version = "0.2.0"
+description = "Eval gates, LLM-as-judge, agentic-trace evals, and reliability primitives for LLM pipelines"
 readme = "README.md"
 license = { text = "MIT" }
 requires-python = ">=3.9"
 authors = [{ name = "Lester Leong", email = "lester.leong89@gmail.com" }]
-keywords = ["llm", "eval", "evaluation", "reliability", "ai", "agents", "pipeline"]
+keywords = [
+    "llm",
+    "eval",
+    "evaluation",
+    "llm-as-judge",
+    "agent",
+    "agentic",
+    "benchmark",
+    "reliability",
+    "ai",
+    "pipeline",
+]
 classifiers = [
-    "Development Status :: 3 - Alpha",
+    "Development Status :: 4 - Beta",
     "Intended Audience :: Developers",
     "License :: OSI Approved :: MIT License",
     "Programming Language :: Python :: 3",
@@ -28,6 +39,9 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+judge = [
+    "anthropic>=0.40",
+]
 dev = [
     "pytest>=8.0",
     "pytest-cov>=5.0",
@@ -42,6 +56,17 @@ Issues = "https://github.com/LesterALeong/llm-evalgate/issues"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/llm_evalgate"]
+artifacts = ["*.jsonl"]
+
+[tool.hatch.build.targets.sdist]
+include = [
+    "src/llm_evalgate",
+    "tests",
+    "examples",
+    "README.md",
+    "LICENSE",
+]
+artifacts = ["*.jsonl"]
 
 [tool.ruff]
 line-length = 100

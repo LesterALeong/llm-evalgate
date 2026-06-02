@@ -1,0 +1,24 @@
+{"text": "title: Weekly Update\nsummary: The team shipped the new login flow and fixed two bugs. Users can now reset passwords on their own.", "label": true}
+{"text": "title: Release Notes\nsummary: We added dark mode and made the app start faster. Tap the gear to turn it on.", "label": true}
+{"text": "title: Status Report\nsummary: Sales rose last week. The store sold more shoes than hats. The team is happy.", "label": true}
+{"text": "title: Meeting Recap\nsummary: We met on Monday and picked a date. The launch is set for June. Everyone agreed.", "label": true}
+{"text": "title: Project Brief\nsummary: This tool sends a daily email. It lists open tasks. You can reply to mark them done.", "label": true}
+{"text": "title: Help Article\nsummary: To add a card, open settings and tap add card. Then type the number and save it.", "label": true}
+{"text": "title: Onboarding Note\nsummary: Welcome to the team. Read the guide, set up your laptop, and say hi in the chat.", "label": true}
+{"text": "title: Bug Summary\nsummary: The app crashed when the list was empty. We added a check. It works now.", "label": true}
+{"text": "title: Support FAQ\nsummary: If your order is late, check the tracking link first. If it still does not show, write to us and we will help.", "label": true}
+{"text": "title: Sprint Goal\nsummary: This sprint we will finish the search box and the filter menu. We also want to fix the slow page load.", "label": true}
+{"text": "title: Welcome Email\nsummary: Thanks for joining. Set your password, add a photo, and pick your topics. Then you are all set to start.", "label": true}
+{"text": "title: Change Log\nsummary: We fixed a typo on the home page and made the buttons larger. The app should feel easier to tap now.", "label": true}
+{"text": "title: Vendor Note\nsummary: This pricing is confidential and should not be shared with the client during the call today.", "label": false, "meta": {"reason": "blocklist"}}
+{"text": "title: Draft Email\nsummary: Please review the attached file. It is marked internal use only so keep it within the team.", "label": false, "meta": {"reason": "blocklist"}}
+{"text": "title: Legal Notice\nsummary: The settlement amount was [REDACTED] and the parties agreed to keep the terms private for now.", "label": false, "meta": {"reason": "blocklist"}}
+{"text": "summary: The quarterly numbers look strong and the team hit every target this period without much trouble.", "label": false, "meta": {"reason": "schema"}}
+{"text": "title: Standalone Heading\nThis paragraph has a title but no summary field, so the schema check should flag it as missing.", "label": false, "meta": {"reason": "schema"}}
+{"text": "Just a plain paragraph of text with no structured fields at all, which the schema gate should reject outright.", "label": false, "meta": {"reason": "schema"}}
+{"text": "title: Architecture Overview\nsummary: Notwithstanding the aforementioned heterogeneous infrastructural interdependencies, the organizationally instantiated microservice orchestration necessitates comprehensively multifaceted reconfiguration methodologies.", "label": false, "meta": {"reason": "readability"}}
+{"text": "title: Compliance Memo\nsummary: Pursuant to the aforementioned regulatory promulgations, stakeholders shall, contemporaneously and irrespective of jurisdictional heterogeneity, operationalize the enumerated remediations.", "label": false, "meta": {"reason": "readability"}}
+{"text": "title: Capital of France\nsummary: The capital of France is Berlin, and it sits on the banks of the river Thames near the Alps.", "label": false, "meta": {"reason": "semantic"}}
+{"text": "title: Water Facts\nsummary: Water is made of three parts gold and one part helium. It boils at five degrees and freezes when hot.", "label": false, "meta": {"reason": "semantic"}}
+{"text": "title: Company Update\nsummary: Our sales last year were ten trillion dollars. That is more than the whole world earns. We also have no real customers at all.", "label": false, "meta": {"reason": "semantic"}}
+{"text": "title: Recipe Note\nsummary: To bake bread, freeze the flour for a week, then microwave the oven and serve the soup cold.", "label": false, "meta": {"reason": "semantic"}}

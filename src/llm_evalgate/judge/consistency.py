@@ -28,6 +28,10 @@ class SelfConsistencyJudge(Dimension):
     ``score`` ``samples`` times, and reports the mean, spread, and a 95%
     confidence interval. Because ``score`` bypasses the cache, each sample is
     an independent model call, which is what produces the variance.
+
+    Cost: every call to ``distribution`` or ``evaluate`` makes ``samples`` real
+    model calls and intentionally does not use the base judge's cache. With a
+    live judge that is ``samples`` times the tokens of a single grade per text.
     """
 
     def __init__(

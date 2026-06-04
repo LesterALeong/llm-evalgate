@@ -102,3 +102,57 @@ def all_metrics(predicted: list[bool], labels: list[bool]) -> dict[str, float]:
         "cohen_kappa": cohen_kappa(predicted, labels),
         "regression_catch_rate": regression_catch_rate(predicted, labels),
     }
+
+
+def _validate_pair(x: list[float], y: list[float]) -> None:
+    if len(x) != len(y):
+        raise ValueError(
+            f"x and y must be equal length; got {len(x)} and {len(y)}"
+        )
+    if not x:
+        raise ValueError("x and y must be non-empty")
+
+
+def pearson(x: list[float], y: list[float]) -> float:
+    """Pearson correlation coefficient. Zero-variance input returns 0.0."""
+    _validate_pair(x, y)
+    n = len(x)
+    mean_x = sum(x) / n
+    mean_y = sum(y) / n
+    dx = [xi - mean_x for xi in x]
+    dy = [yi - mean_y for yi in y]
+    covariance = sum(a * b for a, b in zip(dx, dy))
+    var_x = sum(a * a for a in dx)
+    var_y = sum(b * b for b in dy)
+    denom = (var_x * var_y) ** 0.5
+    if denom == 0:
+        return 0.0
+    return covariance / denom
+
+
+def _average_ranks(values: list[float]) -> list[float]:
+    """Rank ``values`` ascending, assigning tied values their average rank."""
+    order = sorted(range(len(values)), key=lambda i: values[i])
+    ranks = [0.0] * len(values)
+    i = 0
+    while i < len(order):
+        j = i
+        while j + 1 < len(order) and values[order[j + 1]] == values[order[i]]:
+            j += 1
+        average_rank = (i + j) / 2 + 1
+        for k in range(i, j + 1):
+            ranks[order[k]] = average_rank
+        i = j + 1
+    return ranks
+
+
+def spearman(x: list[float], y: list[float]) -> float:
+    """Spearman rank correlation: Pearson on the average-rank transform."""
+    _validate_pair(x, y)
+    return pearson(_average_ranks(x), _average_ranks(y))
+
+
+def mae(x: list[float], y: list[float]) -> float:
+    """Mean absolute error between two equal-length vectors."""
+    _validate_pair(x, y)
+    return sum(abs(a - b) for a, b in zip(x, y)) / len(x)

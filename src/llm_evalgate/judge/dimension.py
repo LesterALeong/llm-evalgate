@@ -36,16 +36,21 @@ class JudgeDimension(Dimension):
         self._template = prompt_template or DEFAULT_PROMPT_TEMPLATE
         self._cache = cache
 
+    def score(self, text: str) -> JudgeVerdict:
+        """Render the prompt, call the model once, and parse. No caching, never raises."""
+        prompt = render_prompt(self._template, self._rubric, self._scale, text)
+        try:
+            raw = self._complete(prompt)
+        except Exception as exc:
+            return JudgeVerdict(score=0.0, reason=f"judge error: {exc}", raw="")
+        return parse_verdict(raw, self._scale)
+
     def evaluate(self, text: str) -> tuple[float, str]:
         prompt = render_prompt(self._template, self._rubric, self._scale, text)
         if self._cache is not None and prompt in self._cache:
             verdict = self._cache[prompt]
             return verdict.score, verdict.reason
-        try:
-            raw = self._complete(prompt)
-        except Exception as exc:
-            return 0.0, f"judge error: {exc}"
-        verdict = parse_verdict(raw, self._scale)
+        verdict = self.score(text)
         if self._cache is not None:
             self._cache[prompt] = verdict
         return verdict.score, verdict.reason

@@ -4,9 +4,12 @@ from .metrics import (
     cohen_kappa,
     confusion_counts,
     f1,
+    mae,
+    pearson,
     precision,
     recall,
     regression_catch_rate,
+    spearman,
 )
 from .runner import BenchmarkResult, BenchmarkRunner, BenchSample, load_golden
 
@@ -23,4 +26,7 @@ __all__ = [
     "cohen_kappa",
     "regression_catch_rate",
     "all_metrics",
+    "pearson",
+    "spearman",
+    "mae",
 ]

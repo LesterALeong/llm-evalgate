@@ -175,6 +175,59 @@ judge = JudgeDimension(complete=anthropic_judge("claude-sonnet-4-6"), rubric=rub
 
 The judge never raises into your pipeline: a model error or an unparseable response scores `0.0` with the reason recorded, so a flaky grader fails closed instead of crashing the run.
 
+## Judge reliability: measure and de-bias your judge
+
+An LLM judge is itself a model, with all the variance and bias that implies. Trusting it blind is how a bad eval ships. These three tools measure and correct for that. See [`examples/judge_calibration.py`](examples/judge_calibration.py) for a runnable, offline demo.
+
+### Uncertainty (self-consistency)
+
+A judge at temperature > 0 returns a different score each call, and a single number hides that. `SelfConsistencyJudge` samples the judge N times and reports the spread and a 95% confidence interval, so you know whether a score of 0.62 is solid or a coin flip.
+
+```python
+from llm_evalgate import JudgeDimension, SelfConsistencyJudge
+
+judge = JudgeDimension(complete=my_model_call, rubric="Is the answer faithful to the source?")
+robust = SelfConsistencyJudge(judge, samples=5)
+
+report = robust.run(answer)
+# PASS [self_consistency] score=0.640 - mean=0.640; stdev=0.080; 95% CI=[0.570, 0.710]; n=5
+dist = robust.distribution(answer)   # ScoreDistribution(mean, stdev, n, ci_low, ci_high, scores)
+```
+
+### Position bias (pairwise, order-swapped)
+
+When a judge compares two answers, it tends to favor whichever is shown first. `PairwiseJudge` runs the comparison in both orders and only trusts a verdict that survives the swap; if the judge flips, the result is reported as a tie with `consistent=False`. `position_bias_rate` measures how often a judge flips across a set of pairs, so you can quantify the bias before you rely on the judge.
+
+```python
+from llm_evalgate import PairwiseJudge, position_bias_rate
+
+pj = PairwiseJudge(complete=my_model_call, criteria="Which answer is more helpful?")
+result = pj.compare(answer_a, answer_b)
+# result.winner in {"A", "B", "tie"}; result.consistent is False when order flipped the call
+
+bias = position_bias_rate(pj, [(a1, b1), (a2, b2), ...])   # 0.0 = unbiased, 1.0 = pure position bias
+```
+
+### Calibration (judge vs human)
+
+The only real test of a judge is agreement with human labels. `calibrate_judge` scores a labeled set and reports the correlation (Pearson, Spearman) and error (MAE) against human scores, plus accuracy and Cohen's kappa against human pass/fail. `verbosity_bias` checks the failure mode where a judge just rewards length.
+
+```python
+from llm_evalgate import JudgeDimension, CalibrationSample, calibrate_judge, verbosity_bias
+
+judge = JudgeDimension(complete=my_model_call, rubric="Grade the answer.")
+report = calibrate_judge(judge, [
+    CalibrationSample(text=a1, human_score=0.9, human_label=True),
+    CalibrationSample(text=a2, human_score=0.2, human_label=False),
+    # ...
+])
+print(report.table())   # pearson / spearman / mae / accuracy / cohen_kappa
+
+length_corr = verbosity_bias(judge, [a1, a2, a3])   # high = the judge is rewarding length, not quality
+```
+
+A judge you have calibrated, sampled for uncertainty, and checked for position and verbosity bias is one you can defend in a design review. An uncalibrated judge is a vibe with an API bill.
+
 ## Agentic evaluation
 
 Agents are not just their final answer, they are a trajectory of tool calls. `llm-evalgate` evaluates the whole trace.

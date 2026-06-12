@@ -4,7 +4,7 @@ import statistics
 from collections.abc import Callable
 from typing import Any
 
-from ..eval.dimension import Dimension
+from ..eval.dimension import Dimension, DimensionResult
 from .base import DEFAULT_PROMPT_TEMPLATE, JudgeVerdict, parse_verdict, render_prompt
 
 _AGGREGATES = ("mean", "median", "majority")
@@ -71,6 +71,7 @@ class JuryDimension(Dimension):
         *,
         aggregate: str = "mean",
         threshold: float = 0.6,
+        max_disagreement: float | None = None,
         name: str = "jury",
     ) -> None:
         if not judges:
@@ -82,16 +83,19 @@ class JuryDimension(Dimension):
         super().__init__(threshold=threshold, name=name)
         self._judges = judges
         self._aggregate = aggregate
+        self._max_disagreement = max_disagreement
 
-    def evaluate(self, text: str) -> tuple[float, str]:
+    def _grade(self, text: str) -> tuple[float, str, float]:
+        """Return ``(score, detail, spread)`` where spread is the score stdev."""
         scores = [judge.evaluate(text)[0] for judge in self._judges]
+        spread = statistics.pstdev(scores)
         per_judge = ", ".join(f"{s:.3f}" for s in scores)
         if self._aggregate == "mean":
             score = statistics.fmean(scores)
-            agreement = f"stdev={statistics.pstdev(scores):.3f}"
+            agreement = f"stdev={spread:.3f}"
         elif self._aggregate == "median":
             score = statistics.median(scores)
-            agreement = f"stdev={statistics.pstdev(scores):.3f}"
+            agreement = f"stdev={spread:.3f}"
         else:
             passing = sum(1 for s in scores if s >= self.threshold)
             failing = len(scores) - passing
@@ -101,7 +105,26 @@ class JuryDimension(Dimension):
             f"{self._aggregate} score={score:.3f}; "
             f"per-judge=[{per_judge}]; {agreement}"
         )
+        return score, detail, spread
+
+    def evaluate(self, text: str) -> tuple[float, str]:
+        score, detail, _ = self._grade(text)
         return score, detail
+
+    def run(self, text: str) -> DimensionResult:
+        """Grade once, flagging for review when the judges disagree too much."""
+        score, detail, spread = self._grade(text)
+        needs_review = (
+            self._max_disagreement is not None and spread > self._max_disagreement
+        )
+        if needs_review:
+            detail += f"; REVIEW: judge spread {spread:.3f} > {self._max_disagreement:.3f}"
+        return DimensionResult(
+            score=score,
+            passed=score >= self.threshold,
+            detail=detail,
+            needs_review=needs_review,
+        )
 
 
 def anthropic_judge(model: str, client: Any = None) -> Callable[[str], str]:

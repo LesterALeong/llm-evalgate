@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from ..bench.metrics import accuracy, cohen_kappa, mae, pearson, spearman
+from ..bench.metrics import accuracy, cohen_kappa, confusion_counts, mae, pearson, spearman
 from .dimension import JudgeDimension
 
 
@@ -21,6 +21,9 @@ class CalibrationReport:
     mae: float | None
     accuracy: float | None
     cohen_kappa: float | None
+    sensitivity: float | None = None
+    specificity: float | None = None
+    confusion: dict[str, int] | None = None
 
     def table(self) -> str:
         """Render an aligned report; ``n=<n>`` then each non-None metric."""
@@ -32,6 +35,8 @@ class CalibrationReport:
                 ("mae", self.mae),
                 ("accuracy", self.accuracy),
                 ("cohen_kappa", self.cohen_kappa),
+                ("sensitivity", self.sensitivity),
+                ("specificity", self.specificity),
             )
             if value is not None
         ]
@@ -63,11 +68,18 @@ def calibrate_judge(
         score_mae = mae(judge_scores, human_scores)
 
     label_accuracy = label_kappa = None
+    sensitivity = specificity = None
+    confusion = None
     if all(s.human_label is not None for s in samples):
         human_labels = [s.human_label for s in samples]
         judge_labels = [s >= judge.threshold for s in judge_scores]
         label_accuracy = accuracy(judge_labels, human_labels)
         label_kappa = cohen_kappa(judge_labels, human_labels)
+        confusion = confusion_counts(judge_labels, human_labels)
+        pos = confusion["tp"] + confusion["fn"]  # human-positive total
+        neg = confusion["tn"] + confusion["fp"]  # human-negative total
+        sensitivity = confusion["tp"] / pos if pos else None
+        specificity = confusion["tn"] / neg if neg else None
 
     return CalibrationReport(
         n=len(samples),
@@ -76,6 +88,9 @@ def calibrate_judge(
         mae=score_mae,
         accuracy=label_accuracy,
         cohen_kappa=label_kappa,
+        sensitivity=sensitivity,
+        specificity=specificity,
+        confusion=confusion,
     )
 
 

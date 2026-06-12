@@ -1,3 +1,4 @@
+from .gate import GateReport, GateRow, RegressionGate
 from .metrics import (
     accuracy,
     all_metrics,
@@ -11,12 +12,25 @@ from .metrics import (
     regression_catch_rate,
     spearman,
 )
-from .runner import BenchmarkResult, BenchmarkRunner, BenchSample, load_golden
+from .runner import (
+    BenchmarkResult,
+    BenchmarkRunner,
+    BenchSample,
+    fingerprint_samples,
+    load_golden,
+)
+from .stats import (
+    ConfidenceInterval,
+    bootstrap_ci,
+    min_detectable_effect,
+    required_sample_size,
+)
 
 __all__ = [
     "BenchSample",
     "BenchmarkResult",
     "BenchmarkRunner",
+    "fingerprint_samples",
     "load_golden",
     "confusion_counts",
     "accuracy",
@@ -29,4 +43,13 @@ __all__ = [
     "pearson",
     "spearman",
     "mae",
+    # stats
+    "ConfidenceInterval",
+    "bootstrap_ci",
+    "min_detectable_effect",
+    "required_sample_size",
+    # gate
+    "RegressionGate",
+    "GateReport",
+    "GateRow",
 ]

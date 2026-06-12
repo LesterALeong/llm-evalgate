@@ -1,0 +1,49 @@
+[
+  {
+    "name": "execute_tool get_weather",
+    "start_time_unix_nano": 1700000002000000000,
+    "attributes": {
+      "gen_ai.operation.name": "execute_tool",
+      "gen_ai.tool.name": "get_weather",
+      "gen_ai.tool.call.arguments": "{\"city\": \"Paris\"}",
+      "gen_ai.tool.call.result": "18C"
+    },
+    "status": {"code": "OK"}
+  },
+  {
+    "name": "chat plan",
+    "start_time_unix_nano": 1700000001000000000,
+    "attributes": {
+      "gen_ai.operation.name": "chat",
+      "gen_ai.prompt": "Find the weather in Paris and convert it to Fahrenheit.",
+      "gen_ai.completion": "I will look up the weather in Paris first."
+    },
+    "status": {"code": "OK"}
+  },
+  {
+    "name": "chat finish",
+    "start_time_unix_nano": 1700000003000000000,
+    "attributes": {
+      "gen_ai.operation.name": "chat",
+      "gen_ai.completion": "It is about 64.4F in Paris."
+    },
+    "status": {"code": "OK"}
+  },
+  {
+    "name": "execute_tool celsius_to_f",
+    "start_time_unix_nano": 1700000004000000000,
+    "attributes": {
+      "gen_ai.operation.name": "execute_tool",
+      "gen_ai.tool.name": "celsius_to_f",
+      "gen_ai.tool.call.arguments": "{\"c\": 18}",
+      "gen_ai.tool.call.result": "64.4F"
+    },
+    "status": {"code": "OK"}
+  },
+  {
+    "name": "internal bookkeeping span",
+    "start_time_unix_nano": 1700000005000000000,
+    "attributes": {"db.system": "postgres"},
+    "status": {"code": "OK"}
+  }
+]

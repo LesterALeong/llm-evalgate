@@ -28,6 +28,11 @@ class PairwiseResult:
     reason: str
     raw: tuple[str, str]
 
+    @property
+    def needs_review(self) -> bool:
+        """True when the verdict flipped on order swap, so it is not trustworthy."""
+        return not self.consistent
+
 
 def parse_pairwise(raw: str) -> tuple[str, str]:
     """Parse a pairwise response into ``(slot, reason)``, never raising.

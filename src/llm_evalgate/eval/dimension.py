@@ -9,6 +9,7 @@ class DimensionResult:
     score: float
     passed: bool
     detail: str
+    needs_review: bool = False
 
 
 class Dimension(ABC):

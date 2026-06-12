@@ -4,7 +4,7 @@ import statistics
 from dataclasses import dataclass
 from math import sqrt
 
-from ..eval.dimension import Dimension
+from ..eval.dimension import Dimension, DimensionResult
 from .dimension import JudgeDimension
 
 _AGGREGATES = ("mean", "median")
@@ -41,6 +41,8 @@ class SelfConsistencyJudge(Dimension):
         samples: int = 5,
         aggregate: str = "mean",
         threshold: float | None = None,
+        max_stdev: float | None = None,
+        review_margin: float | None = None,
         name: str = "self_consistency",
     ) -> None:
         if samples < 1:
@@ -54,6 +56,8 @@ class SelfConsistencyJudge(Dimension):
         self._judge = judge
         self._samples = samples
         self._aggregate = aggregate
+        self._max_stdev = max_stdev
+        self._review_margin = review_margin
 
     def distribution(self, text: str) -> ScoreDistribution:
         scores = [self._judge.score(text).score for _ in range(self._samples)]
@@ -73,7 +77,10 @@ class SelfConsistencyJudge(Dimension):
         )
 
     def evaluate(self, text: str) -> tuple[float, str]:
-        dist = self.distribution(text)
+        return self._summarize(self.distribution(text))[:2]
+
+    def _summarize(self, dist: ScoreDistribution) -> tuple[float, str, bool]:
+        """Turn a distribution into ``(score, detail, needs_review)``."""
         if self._aggregate == "mean":
             score = dist.mean
         else:
@@ -82,4 +89,28 @@ class SelfConsistencyJudge(Dimension):
             f"mean={dist.mean:.3f}; stdev={dist.stdev:.3f}; "
             f"95% CI=[{dist.ci_low:.3f}, {dist.ci_high:.3f}]; n={dist.n}"
         )
-        return score, detail
+        needs_review = False
+        if self._max_stdev is not None and dist.stdev > self._max_stdev:
+            needs_review = True
+            detail += f"; REVIEW: stdev {dist.stdev:.3f} > {self._max_stdev:.3f}"
+        if (
+            self._review_margin is not None
+            and abs(score - self.threshold) < self._review_margin
+            and dist.ci_low <= self.threshold <= dist.ci_high
+        ):
+            needs_review = True
+            detail += (
+                f"; REVIEW: CI [{dist.ci_low:.3f}, {dist.ci_high:.3f}] "
+                f"straddles threshold {self.threshold:.3f}"
+            )
+        return score, detail, needs_review
+
+    def run(self, text: str) -> DimensionResult:
+        """Sample once, then decide pass/fail and whether to flag for review."""
+        score, detail, needs_review = self._summarize(self.distribution(text))
+        return DimensionResult(
+            score=score,
+            passed=score >= self.threshold,
+            detail=detail,
+            needs_review=needs_review,
+        )

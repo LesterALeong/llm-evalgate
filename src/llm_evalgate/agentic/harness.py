@@ -17,11 +17,23 @@ class AgentEvalReport:
     def failures(self) -> dict[str, DimensionResult]:
         return {name: r for name, r in self.results.items() if not r.passed}
 
+    @property
+    def needs_review(self) -> dict[str, DimensionResult]:
+        """Dimensions flagged as too uncertain to trust without a human look."""
+        return {name: r for name, r in self.results.items() if r.needs_review}
+
     def __str__(self) -> str:
-        lines = [f"AgentEvalReport: {'PASS' if self.passed else 'FAIL'}"]
+        header = f"AgentEvalReport: {'PASS' if self.passed else 'FAIL'}"
+        flagged = len(self.needs_review)
+        if flagged:
+            header += f" ({flagged} flagged for review)"
+        lines = [header]
         for name, result in self.results.items():
             status = "PASS" if result.passed else "FAIL"
-            lines.append(f"  {status} [{name}] score={result.score:.3f} - {result.detail}")
+            marker = " REVIEW" if result.needs_review else ""
+            lines.append(
+                f"  {status}{marker} [{name}] score={result.score:.3f} - {result.detail}"
+            )
         return "\n".join(lines)
 
 

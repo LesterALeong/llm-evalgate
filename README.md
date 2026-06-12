@@ -16,7 +16,7 @@ It gives you four things:
 - **Eval gates**: code-only quality dimensions that run the same way every time. Drop them into any pipeline, run them in CI, get a pass/fail with a reason. No tokens burned, no model drift.
 - **LLM-as-judge and jury**: when a check needs semantic judgment a regex cannot give, grade with a model, or a panel of models, and read the agreement back. Same `Dimension` interface, so judges compose with gates in one harness.
 - **Agentic evals**: score agent traces, not just final text. Tool selection, argument validity, step efficiency, goal completion, and judge-backed trajectory coherence for long-horizon reasoning.
-- **Benchmarking**: measure your eval against labeled data. Accuracy, precision/recall, Cohen's kappa, and regression-catch-rate, so you know whether your gate actually catches the failures that matter.
+- **Benchmarking and a real gate**: measure your eval against labeled data — accuracy, precision/recall, Cohen's kappa, and regression-catch-rate, each with a bootstrap confidence interval — then fail CI on a statistically significant regression against a saved baseline. Power helpers tell you when your dataset is too small to trust.
 
 Plus **reliability primitives** (retry with backoff, model fallback chains, circuit breaker) for pipelines that hold up in production.
 
@@ -270,11 +270,22 @@ if not report.passed:
 |---|---|
 | `ToolSelectionDimension` | Did the agent call the expected tools (as a subset, exact set, or in order)? |
 | `ToolArgValidityDimension` | Were tool arguments well-formed, and did any call error? |
+| `ToolHallucinationDimension` | Did it call a tool that exists, with arguments the schema allows? |
 | `StepEfficiencyDimension` | Did it finish within a step budget, without looping on repeated calls? |
 | `GoalCompletionDimension` | Did the final answer satisfy a checker or required content? |
+| `StepProgressDimension` | Judge-backed: does each step make progress, and which step is the weakest? |
 | `TrajectoryCoherenceDimension` | Judge-backed: does the reasoning path hang together over long horizons? |
 
-`TrajectoryCoherenceDimension` wraps a `JudgeDimension`, so long-horizon reasoning quality is scored by a model while the structural checks above stay deterministic.
+`TrajectoryCoherenceDimension` and `StepProgressDimension` wrap a `JudgeDimension`, so reasoning quality is scored by a model while the structural checks above stay deterministic. `ToolHallucinationDimension` takes a tool registry and catches phantom tools and bad arguments — build the registry straight from your existing tool definitions with `ToolSchema.from_json_schema(tool_def)`. `StepProgressDimension` scores every step against the history before it and names the weakest one, so a failure is localized rather than reported as a single trajectory number.
+
+You do not have to hand-build traces. If your agent is instrumented with the OpenTelemetry GenAI semantic conventions (LangSmith, MLflow, and most OTel exporters emit them), import the spans directly:
+
+```python
+from llm_evalgate import AgentTrace
+
+trace = AgentTrace.from_otel(exported_spans)   # plain span dicts; no OTel SDK needed
+report = harness.run(trace)
+```
 
 ## Benchmarking: is your eval any good?
 
@@ -296,19 +307,95 @@ result = BenchmarkRunner(harness).run(load_golden())
 print(result.table())
 ```
 
-Run against the bundled 24-sample golden set (see [`examples/benchmark.py`](examples/benchmark.py)), the deterministic harness alone scores:
+Run against the bundled 60-sample stratified golden set (see [`examples/benchmark.py`](examples/benchmark.py)), the deterministic harness alone scores (95% bootstrap CIs shown):
 
 ```
-n=24
-accuracy               0.833
-precision              0.750
-recall                 1.000
-f1                     0.857
-cohen_kappa            0.667
-regression_catch_rate  0.667
+n=60
+accuracy               0.850  [0.750, 0.933]
+precision              0.775  [0.641, 0.900]
+recall                 1.000  [1.000, 1.000]
+f1                     0.873  [0.781, 0.947]
+cohen_kappa            0.697  [0.516, 0.864]
+regression_catch_rate  0.690  [0.500, 0.857]
 ```
 
-It catches every formatting and policy violation but misses 4 of 12 regressions, because those failures are semantic (a fluent, well-formatted answer that is simply wrong). Add an LLM judge to the same harness and the catch rate closes to `1.000`. That is the whole thesis: deterministic gates are necessary but not sufficient, and the benchmark is how you prove where the line is.
+It catches every formatting, policy, and readability violation but misses all 9 semantic regressions, because those failures are semantic (a fluent, well-formatted answer that is simply wrong). Add an LLM judge to the same harness and the catch rate closes. That is the whole thesis: deterministic gates are necessary but not sufficient, and the benchmark is how you prove where the line is.
+
+Those `[low, high]` columns are 95% bootstrap confidence intervals, on by default. They are not decoration: at `n=60` the minimum detectable effect is about `0.145`, so a 2-point regression is inside the noise. The library tells you that rather than letting you pretend a point estimate is precise — see [confidence intervals and the regression gate](#confidence-intervals-power-and-the-regression-gate) below.
+
+## Confidence intervals, power, and the regression gate
+
+A benchmark number with no error bar is a guess with a decimal point. Every `BenchmarkRunner` metric ships with a percentile bootstrap CI, and two power helpers tell you whether your dataset can even resolve the regression you want to gate on.
+
+```python
+from llm_evalgate.bench import min_detectable_effect, required_sample_size
+
+min_detectable_effect(60)        # ~0.145 — a 60-sample set can't see a 2pp drop
+required_sample_size(0.02)       # ~3100  — that's what a 2pp gate actually needs
+```
+
+The **regression gate** is the piece that makes the package name true. Save a known-good run as a baseline, then fail the build when a metric regresses past a threshold — but only when the drop clears the noise floor, computed with a paired bootstrap on the same resampled rows.
+
+```python
+from llm_evalgate import BenchmarkRunner, RegressionGate
+
+baseline = BenchmarkRunner(harness).run(golden)
+baseline.save("baseline.json")               # commit this
+
+# ... later, on a PR ...
+current = BenchmarkRunner(new_harness).run(golden)
+gate = RegressionGate(metrics="all", threshold=0.02, require_significance=True)
+report = gate.check(current, BenchmarkResult.load("baseline.json"))
+if not report.passed:
+    raise SystemExit(report.table())
+```
+
+A dataset fingerprint guards against the classic mistake of diffing two runs that were not on the same data. A drop past the threshold whose delta CI still includes zero is reported as a `WARN`, not a hard `FAIL`, so a small eval set does not block merges on noise — and a power warning fires when the dataset is too small for the threshold. Run it in CI with the bundled entry point:
+
+```bash
+python -m llm_evalgate.gate current.json baseline.json --threshold 0.02   # exit 1 on regression
+```
+
+## Correct the verdict, not just the judge
+
+Calibration tells you the judge's sensitivity and specificity against human labels. The Rogan–Gladen estimator then *uses* them: it converts the judge's raw pass rate into a bias-corrected estimate of the true pass rate, with a CI that propagates uncertainty from both the eval set and the finite calibration set.
+
+```python
+from llm_evalgate import calibrate_judge, corrected_pass_rate
+
+cal = calibrate_judge(judge, labeled_samples)   # now carries sensitivity/specificity
+judge_labels = [judge.run(t).passed for t in production_outputs]
+rate = corrected_pass_rate(judge_labels, cal)
+# observed=0.690; corrected=0.704 [0.631, 0.770] (n_eval=200, n_calibration=120)
+```
+
+A judge at 95% sensitivity and 60% specificity reporting a 78% pass rate is really seeing about 64% — an 8-point bias an uncorrected number hides.
+
+## Claim-level faithfulness
+
+`FactualGroundingDimension` traces numbers; `ClaimFaithfulnessDimension` traces every claim. It decomposes an answer into atomic claims and grades each as supported, unsupported, or contradicted against the evidence — the canonical RAG faithfulness check, and a regular `Dimension` so it drops into the same harness.
+
+```python
+from llm_evalgate import ClaimFaithfulnessDimension
+
+faith = ClaimFaithfulnessDimension(complete=my_model_call, evidence=retrieved_chunks, threshold=0.9)
+report = faith.run(answer)
+# claims=7: 5 supported, 1 unsupported, 1 contradicted; score=0.714
+#   CONTRADICTED: "the contract allows early termination" (evidence says 90-day notice)
+```
+
+## Routing uncertain verdicts to a human
+
+An unstable judge verdict should go to a person, not be trusted as pass/fail. `SelfConsistencyJudge`, `JuryDimension`, and `PairwiseJudge` can now flag a result as `needs_review` — when the score spread is too wide, the CI straddles the threshold, the jury disagrees, or a pairwise verdict flips on order swap. The flag is orthogonal to pass/fail; the report surfaces it so you decide what to route.
+
+```python
+from llm_evalgate import SelfConsistencyJudge
+
+robust = SelfConsistencyJudge(judge, samples=5, max_stdev=0.15, review_margin=0.1)
+result = robust.run(answer)
+if result.needs_review:
+    send_to_human_queue(answer)
+```
 
 ## Deterministic gates first, judge when you need to
 

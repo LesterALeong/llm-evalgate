@@ -164,12 +164,50 @@ def test_golden_deterministic_metrics_are_locked():
         SchemaComplianceDimension(required_fields=["title:", "summary:"]),
         ReadabilityDimension(threshold=0.2),
     ])
-    result = BenchmarkRunner(harness).run(load_golden())
+    result = BenchmarkRunner(harness).run(load_golden(), ci=False)
 
-    assert result.n == 24
-    assert result.metrics["accuracy"] == pytest.approx(0.833, abs=1e-3)
-    assert result.metrics["precision"] == pytest.approx(0.750, abs=1e-3)
+    assert result.n == 60
+    assert result.metrics["accuracy"] == pytest.approx(0.850, abs=1e-3)
+    assert result.metrics["precision"] == pytest.approx(0.775, abs=1e-3)
     assert result.metrics["recall"] == pytest.approx(1.000, abs=1e-3)
-    assert result.metrics["f1"] == pytest.approx(0.857, abs=1e-3)
-    assert result.metrics["cohen_kappa"] == pytest.approx(0.667, abs=1e-3)
-    assert result.metrics["regression_catch_rate"] == pytest.approx(0.667, abs=1e-3)
+    assert result.metrics["f1"] == pytest.approx(0.873, abs=1e-3)
+    assert result.metrics["cohen_kappa"] == pytest.approx(0.697, abs=1e-3)
+    assert result.metrics["regression_catch_rate"] == pytest.approx(0.690, abs=1e-3)
+
+
+def test_golden_stratification():
+    """Per-stratum metrics expose where the deterministic harness fails.
+
+    The semantic stratum is the one deterministic gates cannot catch, so its
+    regression-catch-rate is 0 while policy/format/readability are perfect.
+    """
+    harness = EvalHarness([
+        BlocklistDimension(terms=["confidential", "internal use only", "[REDACTED]"]),
+        SchemaComplianceDimension(required_fields=["title:", "summary:"]),
+        ReadabilityDimension(threshold=0.2),
+    ])
+    result = BenchmarkRunner(harness).run(
+        load_golden(), ci=False, stratify_by="stratum"
+    )
+    assert result.strata is not None
+    assert set(result.strata) >= {
+        "clean", "policy", "format", "readability", "semantic", "edge"
+    }
+    # Deterministic gates miss every semantic regression.
+    assert result.strata["semantic"].metrics["regression_catch_rate"] == pytest.approx(0.0)
+    # But catch every policy violation.
+    assert result.strata["policy"].metrics["regression_catch_rate"] == pytest.approx(1.0)
+    # Small strata are flagged in the rendered table.
+    table = result.table()
+    assert "stratum=semantic" in table
+
+
+def test_stratify_unknown_key_groups_as_none():
+    samples = [
+        BenchSample("public a", True, meta={}),
+        BenchSample("public b", True, meta={}),
+    ]
+    result = BenchmarkRunner(BlocklistDimension(terms=["secret"])).run(
+        samples, ci=False, stratify_by="stratum"
+    )
+    assert "(none)" in result.strata

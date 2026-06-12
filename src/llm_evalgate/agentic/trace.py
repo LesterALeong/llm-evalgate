@@ -17,6 +17,7 @@ class AgentStep:
     thought: str | None = None
     tool_calls: list[ToolCall] = field(default_factory=list)
     observation: str | None = None
+    user_message: str | None = None
 
 
 @dataclass
@@ -41,6 +42,8 @@ class AgentTrace:
         lines = [f"Goal: {self.goal}"]
         for index, step in enumerate(self.steps, start=1):
             lines.append(f"Step {index}:")
+            if step.user_message is not None:
+                lines.append(f"  User: {step.user_message}")
             if step.thought is not None:
                 lines.append(f"  Thought: {step.thought}")
             for call in step.tool_calls:
@@ -73,6 +76,7 @@ class AgentTrace:
                     thought=step_data.get("thought"),
                     tool_calls=tool_calls,
                     observation=step_data.get("observation"),
+                    user_message=step_data.get("user_message"),
                 )
             )
         return cls(
@@ -80,3 +84,15 @@ class AgentTrace:
             steps=steps,
             final_answer=data.get("final_answer"),
         )
+
+    @classmethod
+    def from_otel(cls, spans: list[dict], *, goal: str | None = None) -> AgentTrace:
+        """Build a trace from exported OpenTelemetry GenAI spans.
+
+        Thin wrapper over :func:`llm_evalgate.agentic.otel.trace_from_otel_spans`;
+        use that function directly with ``return_report=True`` to inspect which
+        spans were skipped.
+        """
+        from .otel import trace_from_otel_spans
+
+        return trace_from_otel_spans(spans, goal=goal)

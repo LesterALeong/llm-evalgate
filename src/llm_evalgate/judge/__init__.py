@@ -11,7 +11,9 @@ from .calibration import (
     verbosity_bias,
 )
 from .consistency import ScoreDistribution, SelfConsistencyJudge
+from .correction import CorrectedRate, corrected_pass_rate, rogan_gladen
 from .dimension import JudgeDimension, JuryDimension, anthropic_judge
+from .faithfulness import ClaimFaithfulnessDimension, ClaimVerdict
 from .pairwise import (
     DEFAULT_PAIRWISE_TEMPLATE,
     PairwiseJudge,
@@ -44,4 +46,11 @@ __all__ = [
     "CalibrationReport",
     "calibrate_judge",
     "verbosity_bias",
+    # bias correction
+    "rogan_gladen",
+    "CorrectedRate",
+    "corrected_pass_rate",
+    # claim-level faithfulness
+    "ClaimFaithfulnessDimension",
+    "ClaimVerdict",
 ]

@@ -5,7 +5,10 @@ import pytest
 from llm_evalgate.bench.metrics import accuracy, regression_catch_rate
 from llm_evalgate.bench.stats import (
     ConfidenceInterval,
+    benjamini_hochberg,
     bootstrap_ci,
+    correct_pvalues,
+    holm,
     min_detectable_effect,
     required_sample_size,
 )
@@ -86,3 +89,71 @@ def test_power_helpers_validate_inputs():
         required_sample_size(0.0)
     with pytest.raises(ValueError):
         required_sample_size(0.02, baseline=1.5)
+
+
+def test_holm_matches_worked_example():
+    # p-values in input order; sorted: 0.005, 0.01, 0.03, 0.04 (indices 3,0,2,1).
+    res = holm([0.01, 0.04, 0.03, 0.005], alpha=0.05)
+    assert res.method == "holm"
+    assert res.rejected == (True, False, False, True)
+    assert res.adjusted[3] == pytest.approx(0.02)   # 0.005 * 4
+    assert res.adjusted[0] == pytest.approx(0.03)    # 0.01 * 3
+    assert res.adjusted[2] == pytest.approx(0.06)    # 0.03 * 2
+    assert res.adjusted[1] == pytest.approx(0.06)    # carried up by monotonicity
+
+
+def test_benjamini_hochberg_matches_worked_example():
+    res = benjamini_hochberg([0.01, 0.04, 0.03, 0.005], alpha=0.05)
+    assert res.method == "benjamini_hochberg"
+    assert res.rejected == (True, True, True, True)
+    assert res.adjusted[0] == pytest.approx(0.02)    # 0.01 * 4/2
+    assert res.adjusted[1] == pytest.approx(0.04)    # 0.04 * 4/4
+    assert res.adjusted[2] == pytest.approx(0.04)    # 0.03 * 4/3
+    assert res.adjusted[3] == pytest.approx(0.02)    # 0.005 * 4/1
+
+
+def test_bh_rejects_at_least_as_many_as_holm():
+    pv = [0.001, 0.012, 0.02, 0.04, 0.3, 0.5]
+    assert sum(benjamini_hochberg(pv).rejected) >= sum(holm(pv).rejected)
+
+
+def test_adjusted_pvalues_never_below_raw():
+    pv = [0.001, 0.01, 0.02, 0.03, 0.2, 0.9]
+    for res in (holm(pv), benjamini_hochberg(pv)):
+        for raw, adj in zip(res.pvalues, res.adjusted):
+            assert adj >= raw - 1e-12
+            assert 0.0 <= adj <= 1.0
+
+
+def test_single_hypothesis_correction_is_a_noop():
+    for fn in (holm, benjamini_hochberg):
+        assert fn([0.03], alpha=0.05).rejected == (True,)
+        assert fn([0.2], alpha=0.05).rejected == (False,)
+        assert fn([0.03], alpha=0.05).adjusted == (0.03,)
+
+
+def test_empty_input_returns_empty():
+    for fn in (holm, benjamini_hochberg):
+        res = fn([], alpha=0.05)
+        assert res.adjusted == ()
+        assert res.rejected == ()
+
+
+def test_correct_pvalues_dispatch_and_aliases():
+    pv = [0.01, 0.2]
+    assert correct_pvalues(pv, method="holm").method == "holm"
+    assert correct_pvalues(pv, method="bh").method == "benjamini_hochberg"
+    assert correct_pvalues(pv, method="fdr").method == "benjamini_hochberg"
+    none = correct_pvalues(pv, method="none")
+    assert none.method == "none"
+    assert none.adjusted == tuple(pv)
+    assert none.rejected == (True, False)
+
+
+def test_correction_validates_inputs():
+    with pytest.raises(ValueError):
+        holm([0.5], alpha=1.5)
+    with pytest.raises(ValueError):
+        holm([1.2])
+    with pytest.raises(ValueError):
+        correct_pvalues([0.1], method="bonferroni")

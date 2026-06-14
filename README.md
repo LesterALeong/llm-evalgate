@@ -358,6 +358,36 @@ A dataset fingerprint guards against the classic mistake of diffing two runs tha
 python -m llm_evalgate.gate current.json baseline.json --threshold 0.02   # exit 1 on regression
 ```
 
+## Multiple comparisons: one gate, many tests
+
+A gate that checks K metrics runs K significance tests at once. At `alpha=0.05` with no correction, the probability of *at least one* false FAIL under the null — nothing actually regressed — is `1 - (1 - 0.05)^K`, about **26% at K=6**, not 5%. A gate whose whole job is to not cry wolf cannot run six uncorrected tests and call itself rigorous.
+
+So the gate corrects the per-metric p-values for multiplicity before deciding. `correction` defaults to **Holm** (controls the family-wise error rate — the question a gate actually asks is "did I wrongly block this change *at all*?"); pass `"bh"` for Benjamini–Hochberg (controls the false discovery rate, more powerful, the usual choice when screening many hypotheses) or `"none"` to disable.
+
+```python
+from llm_evalgate import RegressionGate
+
+gate = RegressionGate(metrics="all", threshold=0.02, correction="holm")  # the default
+report = gate.check(current, baseline)
+print(report.table())
+# GateReport: PASS (correction=holm)
+#   accuracy  ...  delta=-0.040  p=0.018 adj_p=0.108  WARN   <- significant alone, noise across the family
+#   ...
+```
+
+Each row now carries both the raw one-sided `p_value` and the multiplicity-`adjusted_p` that actually drove the verdict, so "significant on its own, within noise across the family" is visible rather than silently swallowed.
+
+How much does it matter? [`examples/multiple_comparisons.py`](examples/multiple_comparisons.py) grades many null A/B pairs — true delta zero, so every FAIL is a false positive — and measures the gate's false-failure rate:
+
+```
+correction             false-fail rate
+none                            15.0%
+holm                             1.7%
+bh                               3.3%
+```
+
+An uncorrected six-metric gate falsely blocks roughly one null change in seven; Holm pulls that back to about alpha. (The simulated 15% is below the `1-(1-0.05)^6 ≈ 26%` independent-tests ceiling because the threshold filters sub-threshold breaches and the six metrics are correlated — both pull the realized rate down, but it is still far above 5%.) Reach for BH instead when you are screening many metrics and can trade a known fraction of false alarms for more power.
+
 ## Correct the verdict, not just the judge
 
 Calibration tells you the judge's sensitivity and specificity against human labels. The Rogan–Gladen estimator then *uses* them: it converts the judge's raw pass rate into a bias-corrected estimate of the true pass rate, with a CI that propagates uncertainty from both the eval set and the finite calibration set.

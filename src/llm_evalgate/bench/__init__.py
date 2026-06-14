@@ -21,7 +21,11 @@ from .runner import (
 )
 from .stats import (
     ConfidenceInterval,
+    CorrectionResult,
+    benjamini_hochberg,
     bootstrap_ci,
+    correct_pvalues,
+    holm,
     min_detectable_effect,
     required_sample_size,
 )
@@ -48,6 +52,10 @@ __all__ = [
     "bootstrap_ci",
     "min_detectable_effect",
     "required_sample_size",
+    "CorrectionResult",
+    "holm",
+    "benjamini_hochberg",
+    "correct_pvalues",
     # gate
     "RegressionGate",
     "GateReport",

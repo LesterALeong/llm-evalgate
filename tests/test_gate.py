@@ -81,8 +81,8 @@ def test_small_dataset_regression_warns_not_fails():
         n_resamples=500, seed=0,
     )
     report = gate.check(cur, base)
-    # delta is past threshold but CI on such a small set straddles 0 -> warn
-    assert report.rows[0].verdict in {"warn", "fail"}
+    # delta is past threshold but the one-sided p on such a small set is 0.054 -> warn
+    assert report.rows[0].verdict == "warn"
     # power warning must fire for n=24 with a 2pp threshold
     assert any("minimum detectable effect" in w for w in report.warnings)
 
@@ -126,6 +126,111 @@ def test_unknown_metric_raises():
 def test_gate_report_table_renders():
     report = GateReport(passed=True, rows=[], regressed_samples=[], warnings=[])
     assert "GateReport: PASS" in report.table()
+
+
+def _balanced_perfect_vs_small_dip(n=100, flips=4):
+    """Perfect baseline vs a current with a small, broad regression.
+
+    Labels alternate True/False; the baseline predicts every sample correctly,
+    the current flips ``flips`` of the True-labelled predictions to False. That
+    dips accuracy/recall/f1/kappa a few points each -- a near-null change where
+    several metrics breach a 2pp threshold with individually-borderline p-values,
+    which is exactly where uncorrected multiplicity inflates false failures.
+    """
+    labels = [i % 2 == 0 for i in range(n)]
+    base_pred = list(labels)
+    cur_pred = list(labels)
+    for i in [j for j in range(n) if labels[j]][:flips]:
+        cur_pred[i] = not cur_pred[i]
+    return cur_pred, base_pred, labels
+
+
+def test_correction_default_is_holm():
+    cur_pred, base_pred, labels = _balanced_perfect_vs_small_dip()
+    report = RegressionGate(metrics="all", n_resamples=200, seed=0).check(
+        _result(cur_pred, labels), _result(base_pred, labels)
+    )
+    assert report.correction == "holm"
+
+
+def test_correction_turns_spurious_multimetric_fail_into_pass():
+    cur_pred, base_pred, labels = _balanced_perfect_vs_small_dip(n=100, flips=4)
+    cur, base = _result(cur_pred, labels), _result(base_pred, labels)
+    none_report = RegressionGate(
+        metrics="all", threshold=0.02, correction="none", n_resamples=1000, seed=0
+    ).check(cur, base)
+    holm_report = RegressionGate(
+        metrics="all", threshold=0.02, correction="holm", n_resamples=1000, seed=0
+    ).check(cur, base)
+    assert not none_report.passed   # uncorrected: ≥1 metric individually significant
+    assert holm_report.passed       # Holm: the same drops are within family noise
+    none_fails = {r.metric for r in none_report.rows if r.verdict == "fail"}
+    holm_fails = {r.metric for r in holm_report.rows if r.verdict == "fail"}
+    assert none_fails               # the demonstration is non-trivial
+    assert holm_fails <= none_fails  # correction only ever removes failures
+
+
+def test_rows_carry_pvalues_and_monotone_adjustment():
+    cur_pred, base_pred, labels = _balanced_perfect_vs_small_dip()
+    report = RegressionGate(
+        metrics="all", correction="holm", n_resamples=300, seed=0
+    ).check(_result(cur_pred, labels), _result(base_pred, labels))
+    for row in report.rows:
+        assert 0.0 <= row.p_value <= 1.0
+        assert row.adjusted_p >= row.p_value - 1e-9
+
+
+def test_bh_alias_is_normalized_in_report():
+    cur_pred, base_pred, labels = _balanced_perfect_vs_small_dip()
+    report = RegressionGate(
+        metrics="all", correction="bh", n_resamples=200, seed=0
+    ).check(_result(cur_pred, labels), _result(base_pred, labels))
+    assert report.correction == "benjamini_hochberg"
+
+
+def test_unknown_correction_raises():
+    with pytest.raises(ValueError):
+        RegressionGate(metrics="all", correction="bonferroni")
+
+
+def test_single_metric_correction_is_a_noop():
+    # With one metric there is nothing to correct: Holm and none must agree.
+    base_pred, labels = _synthetic(200, 4)
+    cur_pred, _ = _synthetic(200, 24)
+    cur, base = _result(cur_pred, labels), _result(base_pred, labels)
+    holm_v = (
+        RegressionGate(metrics=("accuracy",), correction="holm", n_resamples=300, seed=0)
+        .check(cur, base)
+        .rows[0]
+        .verdict
+    )
+    none_v = (
+        RegressionGate(metrics=("accuracy",), correction="none", n_resamples=300, seed=0)
+        .check(cur, base)
+        .rows[0]
+        .verdict
+    )
+    assert holm_v == none_v == "fail"
+
+
+def test_stratified_gate_runs_with_correction():
+    cur_pred, base_pred, labels = _balanced_perfect_vs_small_dip()
+    metas = [{"group": "a" if i < 50 else "b"} for i in range(len(labels))]
+    cur = BenchmarkResult(
+        predicted=cur_pred, labels=labels, metrics={}, n=len(labels),
+        dataset_fingerprint="fp", metas=metas,
+    )
+    base = BenchmarkResult(
+        predicted=base_pred, labels=labels, metrics={}, n=len(labels),
+        dataset_fingerprint="fp", metas=metas,
+    )
+    report = RegressionGate(metrics="all", n_resamples=200, seed=0).check(
+        cur, base, stratify_by="group"
+    )
+    assert set(report.stratum_rows) == {"a", "b"}
+    for rows in report.stratum_rows.values():
+        for row in rows:
+            assert row.adjusted_p >= row.p_value - 1e-9
 
 
 def test_cli_exit_codes(tmp_path):

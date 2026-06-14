@@ -31,6 +31,12 @@ def main(argv: list[str] | None = None) -> int:
         help="fail on any drop past the threshold, even within eval noise",
     )
     parser.add_argument(
+        "--correction",
+        default="holm",
+        choices=["holm", "bh", "none"],
+        help="multiple-comparisons correction across metrics (default: holm)",
+    )
+    parser.add_argument(
         "--allow-unpaired",
         action="store_true",
         help="compare even when the two runs used different datasets",
@@ -54,6 +60,7 @@ def main(argv: list[str] | None = None) -> int:
         metrics=metrics,
         threshold=args.threshold,
         require_significance=not args.no_significance,
+        correction=args.correction,
         seed=args.seed,
         allow_unpaired=args.allow_unpaired,
     )

@@ -12,7 +12,7 @@ from .metrics import (
     regression_catch_rate,
 )
 from .runner import BenchmarkResult
-from .stats import _percentile, min_detectable_effect
+from .stats import _percentile, correct_pvalues, min_detectable_effect
 
 # All current metrics are higher-is-better, so a negative delta is a regression.
 _METRIC_FNS = {
@@ -24,6 +24,15 @@ _METRIC_FNS = {
     "regression_catch_rate": regression_catch_rate,
 }
 
+# Accepted spellings on the public API; normalized to a canonical method name.
+_CORRECTION_ALIASES = {
+    "holm": "holm",
+    "bh": "benjamini_hochberg",
+    "benjamini_hochberg": "benjamini_hochberg",
+    "fdr": "benjamini_hochberg",
+    "none": "none",
+}
+
 
 @dataclass(frozen=True)
 class GateRow:
@@ -33,13 +42,17 @@ class GateRow:
     delta: float
     ci_low: float
     ci_high: float
+    p_value: float
+    adjusted_p: float
     verdict: str  # "pass" | "warn" | "fail"
 
     def __str__(self) -> str:
         return (
             f"{self.metric:<22} {self.baseline:6.3f} -> {self.current:6.3f}  "
             f"delta={self.delta:+.3f}  "
-            f"CI=[{self.ci_low:+.3f}, {self.ci_high:+.3f}]  {self.verdict.upper()}"
+            f"CI=[{self.ci_low:+.3f}, {self.ci_high:+.3f}]  "
+            f"p={self.p_value:.3f} adj_p={self.adjusted_p:.3f}  "
+            f"{self.verdict.upper()}"
         )
 
 
@@ -50,9 +63,13 @@ class GateReport:
     regressed_samples: list[int] = field(default_factory=list)
     warnings: list[str] = field(default_factory=list)
     stratum_rows: dict[str, list[GateRow]] = field(default_factory=dict)
+    correction: str = "none"
 
     def table(self) -> str:
-        lines = [f"GateReport: {'PASS' if self.passed else 'FAIL'}"]
+        head = f"GateReport: {'PASS' if self.passed else 'FAIL'}"
+        if self.correction != "none":
+            head += f" (correction={self.correction})"
+        lines = [head]
         for row in self.rows:
             lines.append(f"  {row}")
         for stratum, rows in self.stratum_rows.items():
@@ -76,9 +93,18 @@ class RegressionGate:
     N points against the last known-good run". This compares a current
     :class:`BenchmarkResult` to a saved baseline and decides pass/fail per
     metric. When ``require_significance`` is set, a regression only fails the
-    gate if the paired-bootstrap CI on the delta lies entirely below zero, so a
-    drop that is within eval noise is reported as a warning rather than a hard
-    failure -- which matters because small eval sets cannot resolve small deltas.
+    gate if it is statistically separable from eval noise -- a drop within noise
+    is reported as a warning rather than a hard failure, which matters because
+    small eval sets cannot resolve small deltas.
+
+    Significance is a one-sided bootstrap test (H1: the metric dropped). Because
+    a gate runs that test on *every* configured metric at once, the raw
+    per-metric p-values are corrected for multiple comparisons before the
+    decision: with K metrics at alpha=0.05 and no correction, the chance of at
+    least one false failure under the null is ~1-(1-0.05)^K, far above 0.05.
+    ``correction`` defaults to Holm (controls the family-wise error rate, the
+    right guarantee for a gate); pass ``"bh"`` for Benjamini-Hochberg (FDR) or
+    ``"none"`` to disable.
     """
 
     def __init__(
@@ -87,6 +113,7 @@ class RegressionGate:
         metrics: tuple[str, ...] | str = ("accuracy", "regression_catch_rate"),
         threshold: float = 0.02,
         require_significance: bool = True,
+        correction: str = "holm",
         n_resamples: int = 2000,
         alpha: float = 0.05,
         seed: int | None = 0,
@@ -104,9 +131,15 @@ class RegressionGate:
                 )
         if not resolved:
             raise ValueError("RegressionGate requires at least one metric.")
+        canonical = _CORRECTION_ALIASES.get(correction.lower())
+        if canonical is None:
+            raise ValueError(
+                f"unknown correction {correction!r}; use 'holm', 'bh', or 'none'"
+            )
         self._metrics = resolved
         self._threshold = threshold
         self._require_significance = require_significance
+        self._correction = canonical
         self._n_resamples = n_resamples
         self._alpha = alpha
         self._seed = seed
@@ -123,40 +156,15 @@ class RegressionGate:
         warnings: list[str] = []
         paired = self._is_paired(current, baseline, warnings)
 
-        rows: list[GateRow] = []
-        gate_passed = True
-        for metric in self._metrics:
-            fn = _METRIC_FNS[metric]
-            base_val = fn(baseline.predicted, baseline.labels)
-            cur_val = fn(current.predicted, current.labels)
-            delta = cur_val - base_val
-            ci_low, ci_high = self._delta_ci(fn, current, baseline, paired)
-
-            if delta < -self._threshold:
-                significant = ci_high < 0.0
-                if self._require_significance and not significant:
-                    verdict = "warn"
-                    warnings.append(
-                        f"{metric} dropped {delta:+.3f} (past -{self._threshold:.3f}) "
-                        f"but its delta CI [{ci_low:+.3f}, {ci_high:+.3f}] includes 0 "
-                        f"-- not separable from eval noise at n={current.n}."
-                    )
-                else:
-                    verdict = "fail"
-                    gate_passed = False
-            else:
-                verdict = "pass"
-            rows.append(
-                GateRow(
-                    metric=metric,
-                    baseline=base_val,
-                    current=cur_val,
-                    delta=delta,
-                    ci_low=ci_low,
-                    ci_high=ci_high,
-                    verdict=verdict,
-                )
-            )
+        rows, significant_breach = self._family_rows(
+            self._metrics,
+            current,
+            baseline,
+            paired,
+            warnings=warnings,
+            breach_is_fail=True,
+        )
+        gate_passed = not significant_breach
 
         mde = min_detectable_effect(current.n)
         if mde > self._threshold:
@@ -181,7 +189,80 @@ class RegressionGate:
             regressed_samples=regressed,
             warnings=warnings,
             stratum_rows=stratum_rows,
+            correction=self._correction,
         )
+
+    def _family_rows(
+        self,
+        metrics: tuple[str, ...],
+        current: BenchmarkResult,
+        baseline: BenchmarkResult,
+        paired: bool,
+        *,
+        warnings: list[str] | None,
+        breach_is_fail: bool,
+    ) -> tuple[list[GateRow], bool]:
+        """Evaluate one family of metric tests, correcting their p-values together.
+
+        Returns the rows plus whether any metric was a *significant* regression
+        (a threshold breach that survived the correction, or any breach when
+        ``require_significance`` is off). ``breach_is_fail`` controls whether such
+        a breach is labelled ``"fail"`` (top-level) or ``"warn"`` (a stratum that
+        is not configured to fail the gate). Pass ``warnings=None`` to suppress
+        the per-metric noise warnings (used for strata, which are advisory).
+        """
+        # Pass 1: per-metric point deltas, CIs, and one-sided bootstrap p-values.
+        stats: list[tuple[str, float, float, float, float, float, float]] = []
+        for metric in metrics:
+            fn = _METRIC_FNS[metric]
+            base_val = fn(baseline.predicted, baseline.labels)
+            cur_val = fn(current.predicted, current.labels)
+            delta = cur_val - base_val
+            ci_low, ci_high, p_value = self._delta_stats(fn, current, baseline, paired)
+            stats.append((metric, base_val, cur_val, delta, ci_low, ci_high, p_value))
+
+        # Correct the whole family of per-metric tests together.
+        corr = correct_pvalues(
+            [s[6] for s in stats], method=self._correction, alpha=self._alpha
+        )
+
+        # Pass 2: verdicts using the corrected significance.
+        rows: list[GateRow] = []
+        significant_breach = False
+        for (metric, base_val, cur_val, delta, ci_low, ci_high, p_value), adj, rej in zip(
+            stats, corr.adjusted, corr.rejected
+        ):
+            if delta < -self._threshold:
+                significant = rej if self._require_significance else True
+                if significant:
+                    significant_breach = True
+                    verdict = "fail" if breach_is_fail else "warn"
+                else:
+                    verdict = "warn"
+                    if warnings is not None:
+                        warnings.append(
+                            f"{metric} dropped {delta:+.3f} (past "
+                            f"-{self._threshold:.3f}) but is not significant after "
+                            f"{corr.method} correction (adjusted p={adj:.3f} > "
+                            f"alpha={self._alpha:.3f}) -- within eval noise at "
+                            f"n={current.n}."
+                        )
+            else:
+                verdict = "pass"
+            rows.append(
+                GateRow(
+                    metric=metric,
+                    baseline=base_val,
+                    current=cur_val,
+                    delta=delta,
+                    ci_low=ci_low,
+                    ci_high=ci_high,
+                    p_value=p_value,
+                    adjusted_p=adj,
+                    verdict=verdict,
+                )
+            )
+        return rows, significant_breach
 
     def _stratum_rows(
         self,
@@ -212,25 +293,18 @@ class RegressionGate:
             idx = groups[key]
             sub_cur = _subset(current, idx)
             sub_base = _subset(baseline, idx)
-            rows: list[GateRow] = []
-            for metric in self._metrics:
-                fn = _METRIC_FNS[metric]
-                base_val = fn(sub_base.predicted, sub_base.labels)
-                cur_val = fn(sub_cur.predicted, sub_cur.labels)
-                delta = cur_val - base_val
-                ci_low, ci_high = self._delta_ci(fn, sub_cur, sub_base, paired=True)
-                if delta < -self._threshold and (
-                    not self._require_significance or ci_high < 0.0
-                ):
-                    verdict = "fail" if self._fail_on_stratum else "warn"
-                    any_failed = True
-                elif delta < -self._threshold:
-                    verdict = "warn"
-                else:
-                    verdict = "pass"
-                rows.append(
-                    GateRow(metric, base_val, cur_val, delta, ci_low, ci_high, verdict)
-                )
+            # Each stratum is its own decision context, so its metrics form their
+            # own correction family (correcting across strata too would be far too
+            # conservative -- they are separate questions, not one).
+            rows, significant_breach = self._family_rows(
+                self._metrics,
+                sub_cur,
+                sub_base,
+                paired=True,
+                warnings=None,
+                breach_is_fail=self._fail_on_stratum,
+            )
+            any_failed = any_failed or significant_breach
             stratum_rows[key] = rows
         return stratum_rows, any_failed
 
@@ -257,13 +331,20 @@ class RegressionGate:
         )
         return False
 
-    def _delta_ci(
+    def _delta_stats(
         self,
         fn,
         current: BenchmarkResult,
         baseline: BenchmarkResult,
         paired: bool,
-    ) -> tuple[float, float]:
+    ) -> tuple[float, float, float]:
+        """Bootstrap the delta: return (CI low, CI high, one-sided p-value).
+
+        The CI is the two-sided ``1 - alpha`` percentile interval. The p-value is
+        a one-sided bootstrap test for H1: delta < 0 (a regression), estimated as
+        the share of resampled deltas that are *not* a regression, with the
+        standard ``+1`` in numerator and denominator so it is strictly positive.
+        """
         rng = random.Random(self._seed)
         deltas: list[float] = []
         if paired:
@@ -294,10 +375,12 @@ class RegressionGate:
                     [baseline.labels[i] for i in bi],
                 )
                 deltas.append(cur - base)
+        n_not_regressed = sum(1 for d in deltas if d >= 0.0)
+        p_value = (1 + n_not_regressed) / (len(deltas) + 1)
         deltas.sort()
         low = _percentile(deltas, 100.0 * (self._alpha / 2))
         high = _percentile(deltas, 100.0 * (1 - self._alpha / 2))
-        return low, high
+        return low, high, p_value
 
     @staticmethod
     def _regressed_samples(

@@ -5,7 +5,7 @@ build-backend = "hatchling.build"
 [project]
 name = "llm-evalgate"
 version = "0.4.0"
-description = "Eval gates, calibrated LLM-as-judge, agentic-trace evals, and reliability primitives for LLM pipelines"
+description = "Eval gates with confidence intervals: deterministic gates, calibrated LLM-as-judge, agentic-trace evals, and a statistically honest regression gate for LLM pipelines"
 readme = "README.md"
 license = { text = "MIT" }
 requires-python = ">=3.9"

@@ -1,6 +1,6 @@
 # llm-evalgate
 
-Deterministic eval gates and reliability primitives for LLM pipelines.
+**Eval gates with error bars.** Deterministic gates, a calibrated LLM-as-judge, agentic-trace evals, and a statistically honest regression gate for LLM pipelines — the whole eval surface, in CI, with a confidence interval on every number.
 
 [![CI](https://github.com/LesterALeong/llm-evalgate/actions/workflows/ci.yml/badge.svg)](https://github.com/LesterALeong/llm-evalgate/actions/workflows/ci.yml)
 [![PyPI](https://img.shields.io/pypi/v/llm-evalgate)](https://pypi.org/project/llm-evalgate/)
@@ -9,7 +9,9 @@ Deterministic eval gates and reliability primitives for LLM pipelines.
 
 ---
 
-Most LLM eval tooling is either heavy enterprise SaaS or a pile of one-off scripts. `llm-evalgate` is a small, composable library that covers the full eval surface and runs in CI.
+Most LLM eval tooling hands you a score. Almost none of it tells you whether that score is real. `llm-evalgate` treats your eval like a measurement instrument: every benchmark metric ships with a bootstrap confidence interval, the regression gate only fails CI on a drop that clears the noise floor, and an LLM judge is something you calibrate and de-bias before you trust it — not a vibe with an API bill. It's a small, composable library that covers the full eval surface and runs in CI.
+
+This rigor isn't academic. `llm-evalgate` was extracted and hardened inside a production multi-agent system where a wrong answer doesn't fail a test, it costs real money — so "looks fine" was never good enough. The deterministic gates, the fail-closed judges, and the statistical regression check are the patterns that survived that environment. (Only the reliability engineering is open-sourced here; no strategy, signal, or position data lives in this repo.)
 
 It gives you four things:
 
@@ -428,6 +430,10 @@ report = harness.run(output)
 if not report.passed:
     raise ValueError(f"Output failed eval gate:\n{report}")
 ```
+
+## Who built this
+
+[Lester Leong](https://github.com/LesterALeong) — data scientist and quant. `llm-evalgate` is the eval and reliability layer extracted from a multi-agent system that trades real money, where a wrong answer has real downside rather than just a red test. Issues and PRs welcome.
 
 ## License
 
